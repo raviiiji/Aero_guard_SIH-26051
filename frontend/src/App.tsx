@@ -237,6 +237,12 @@ export function App() {
         onForceRefresh={handleForceRefresh}
         isSimulating={isSimulating}
         fuelSavedPct={simResult?.summary.fuel_saving_percentage || 0}
+        simResult={simResult}
+        weatherData={weatherData}
+        params={params}
+        geometry={geometry}
+        latitude={latitude}
+        elevation={elevation}
       />
 
       {/* 2. Main Content Wrapper (Shifted Right by 64 = 256px) */}
