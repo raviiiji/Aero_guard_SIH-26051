@@ -56,8 +56,19 @@ class OptimizeRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# API Endpoints
+# API Endpoints (Double-routed for local /api and Vercel serverless /)
 # ---------------------------------------------------------------------------
+@app.get("/")
+@app.get("/api")
+def root_index():
+    return {
+        "status": "online",
+        "service": "AERO-SHIELD Thermal Simulation Engine (DRDO ID: 26051)",
+        "version": "1.0.0"
+    }
+
+
+@app.get("/health")
 @app.get("/api/health")
 def health_check():
     return {
@@ -68,6 +79,7 @@ def health_check():
     }
 
 
+@app.get("/materials")
 @app.get("/api/materials")
 def get_materials_and_glazing():
     """Returns database of envelope insulation materials, sheathing, and glazing specifications."""
@@ -77,6 +89,7 @@ def get_materials_and_glazing():
     }
 
 
+@app.get("/stations")
 @app.get("/api/stations")
 def get_defense_stations():
     """Returns curated high-altitude strategic defense station presets."""
@@ -85,6 +98,7 @@ def get_defense_stations():
     }
 
 
+@app.get("/design-template")
 @app.get("/api/design-template")
 def get_design_template(
     latitude: float = Query(34.15, description="Latitude in decimal degrees"),
@@ -102,6 +116,7 @@ def get_design_template(
         raise HTTPException(status_code=500, detail=f"Failed to generate design template: {str(e)}")
 
 
+@app.post("/weather")
 @app.post("/api/weather")
 def get_weather_data(req: WeatherRequest):
     """
@@ -120,6 +135,7 @@ def get_weather_data(req: WeatherRequest):
         raise HTTPException(status_code=500, detail=f"Weather ingestion failed: {str(e)}")
 
 
+@app.post("/simulate")
 @app.post("/api/simulate")
 def simulate_shelter(req: SimulationRequest):
     """
@@ -133,6 +149,7 @@ def simulate_shelter(req: SimulationRequest):
         raise HTTPException(status_code=500, detail=f"Thermal simulation failed: {str(e)}")
 
 
+@app.post("/optimize")
 @app.post("/api/optimize")
 def optimize_shelter(req: OptimizeRequest):
     """
@@ -153,6 +170,7 @@ def optimize_shelter(req: OptimizeRequest):
         raise HTTPException(status_code=500, detail=f"Optimization failed: {str(e)}")
 
 
+@app.post("/parse-cad")
 @app.post("/api/parse-cad")
 async def parse_cad_file(file: UploadFile = File(...)):
     """
@@ -167,7 +185,7 @@ async def parse_cad_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=f"CAD file parsing error: {str(e)}")
 
 
-
+@app.post("/import-csv-weather")
 @app.post("/api/import-csv-weather")
 async def import_csv_weather(file: UploadFile = File(...)):
     """
@@ -257,6 +275,7 @@ async def import_csv_weather(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=f"CSV weather parse failed: {str(e)}")
 
 
+@app.post("/import-csv-materials")
 @app.post("/api/import-csv-materials")
 async def import_csv_materials(file: UploadFile = File(...)):
     """
