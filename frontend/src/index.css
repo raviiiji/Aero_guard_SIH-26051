@@ -1,0 +1,154 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+@layer base {
+  body {
+    background-color: #0b1326;
+    color: #dae2fd;
+    font-family: 'Inter', system-ui, sans-serif;
+    overflow-x: hidden;
+    user-select: none;
+  }
+}
+
+/* Subtle Tactical Scanline Overlay */
+.scanline {
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0),
+    rgba(255, 255, 255, 0) 50%,
+    rgba(0, 0, 0, 0.15) 50%,
+    rgba(0, 0, 0, 0.15)
+  );
+  background-size: 100% 4px;
+  pointer-events: none;
+}
+
+/* Custom Tactical Scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: #060e20;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #222a3d;
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #22d3ee;
+}
+
+/* Tactical Glass Container */
+.tactical-glass {
+  background: rgba(19, 27, 46, 0.75);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(138, 235, 255, 0.2);
+  box-shadow: 0 0 15px rgba(47, 217, 244, 0.08), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  position: relative;
+}
+
+.tactical-glass-interactive {
+  background: rgba(19, 27, 46, 0.75);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(138, 235, 255, 0.2);
+  box-shadow: 0 0 15px rgba(47, 217, 244, 0.08);
+  transition: all 0.2s ease-in-out;
+}
+
+.tactical-glass-interactive:hover {
+  border-color: #22d3ee;
+  box-shadow: 0 0 20px rgba(34, 211, 238, 0.25);
+}
+
+/* Corner Bracket Accents */
+.corner-bracket-tl {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  border-top: 2px solid #8aebff;
+  border-left: 2px solid #8aebff;
+  pointer-events: none;
+}
+
+.corner-bracket-br {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border-bottom: 2px solid #8aebff;
+  border-right: 2px solid #8aebff;
+  pointer-events: none;
+}
+
+/* Sliders */
+input[type=range] {
+  -webkit-appearance: none;
+  width: 100%;
+  background: transparent;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 16px;
+  width: 8px;
+  background: #22d3ee;
+  border-radius: 1px;
+  cursor: pointer;
+  margin-top: -6px;
+  box-shadow: 0 0 8px rgba(34, 211, 238, 0.8);
+}
+input[type=range]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 4px;
+  cursor: pointer;
+  background: rgba(138, 235, 255, 0.2);
+  border-radius: 2px;
+}
+
+/* Leaflet Map in Tactical Style */
+.leaflet-container {
+  background-color: #060e20 !important;
+  font-family: inherit;
+}
+
+.leaflet-tile {
+  filter: brightness(0.65) invert(1) contrast(2.8) hue-rotate(195deg) saturate(0.4) brightness(0.75);
+}
+
+.leaflet-popup-content-wrapper {
+  background: #131b2e !important;
+  color: #dae2fd !important;
+  border: 1px solid #8aebff !important;
+  border-radius: 2px !important;
+  box-shadow: 0 0 15px rgba(34, 211, 238, 0.3) !important;
+}
+
+.leaflet-popup-tip {
+  background: #131b2e !important;
+}
+
+.tactical-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.125rem;
+  font-size: 0.75rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.three-canvas-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
