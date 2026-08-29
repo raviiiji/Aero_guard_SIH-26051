@@ -157,26 +157,31 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
           </div>
 
           {/* Interactive Status Chip -> Opens Full Data Modal */}
-          <div
-            onClick={() => setShowTelemetryModal(true)}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setShowTelemetryModal(true);
+            }}
             title="Click to view all live simulation & telemetry data"
-            className="mx-4 mb-4 p-2 bg-[#131b2e] border border-[#8aebff]/30 hover:border-[#8aebff] rounded text-[11px] flex items-center justify-between text-[#bbc9cd] cursor-pointer hover:bg-[#1b253b] hover:shadow-[0_0_15px_rgba(138,235,255,0.2)] transition-all group"
+            className="w-[calc(100%-2rem)] mx-4 mb-4 p-2.5 bg-[#131b2e] hover:bg-[#1e2a47] border border-[#8aebff]/40 hover:border-[#8aebff] rounded-lg text-[11px] flex items-center justify-between text-[#bbc9cd] cursor-pointer shadow-[0_0_12px_rgba(138,235,255,0.15)] hover:shadow-[0_0_20px_rgba(138,235,255,0.35)] transition-all group select-none"
           >
             <span className="flex items-center gap-1.5">
-              <Radio className="w-3 h-3 text-[#66f796] animate-pulse" />
+              <Radio className="w-3.5 h-3.5 text-[#66f796] animate-pulse" />
               <span className="text-[#dae2fd] font-bold group-hover:text-[#8aebff] transition-colors">
                 SYSTEM ACTIVE
               </span>
             </span>
-            <div className="flex items-center gap-1">
-              <span className="text-[#66f796] font-bold">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[#66f796] font-bold font-mono">
                 {fuelSavedPct > 0 ? `${fuelSavedPct}% SAVED` : 'READY'}
               </span>
-              <span className="text-[10px] text-[#8aebff] opacity-0 group-hover:opacity-100 transition-opacity">
-                🔍
+              <span className="text-xs text-[#8aebff] group-hover:scale-125 transition-transform">
+                ⚡
               </span>
             </div>
-          </div>
+          </button>
 
           {/* 2. Navigation Links */}
           <nav className="px-3 flex flex-col gap-1.5" aria-label="Main Navigation">
@@ -232,8 +237,14 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
 
       {/* 4. Full Live Telemetry & Simulation Data Modal */}
       {showTelemetryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in font-mono text-slate-100">
-          <div className="bg-[#070e20] border-2 border-[#8aebff] rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-[0_0_40px_rgba(138,235,255,0.3)] relative space-y-5">
+        <div
+          onClick={() => setShowTelemetryModal(false)}
+          className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in font-mono text-slate-100 cursor-pointer pointer-events-auto"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[#070e20] border-2 border-[#8aebff] rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-[0_0_50px_rgba(138,235,255,0.4)] relative space-y-5 cursor-default"
+          >
             {/* Corner Bracket Design */}
             <div className="corner-bracket-tl" />
             <div className="corner-bracket-br" />
