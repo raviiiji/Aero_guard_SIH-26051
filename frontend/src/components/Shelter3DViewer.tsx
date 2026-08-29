@@ -307,6 +307,10 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
       });
     }
 
+    // Handle archetype specific properties
+    const effectiveTrombeArea = archetype === 'trombe_wall' ? (trombeArea > 0 ? trombeArea : 4.5) : trombeArea;
+    const effectiveBermDepth = archetype === 'earth_bermed' ? (bermDepth > 0 ? bermDepth : 2.0) : bermDepth;
+
     if (archetype === 'quonset_dome') {
       // Quonset Arch Geometry
       const radius = W / 2;
@@ -330,18 +334,28 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
       endCap2.position.set(L / 2, radius, 0);
       endCap2.rotation.y = Math.PI / 2;
       group.add(endCap2);
-    } else {
-      // Modular Box or Trombe or Earth-Bermed
 
-      // 1. Floor Foundation
+      // Windows on End Cap
+      const winGeo = new THREE.BoxGeometry(0.1, 1.2, 1.4);
+      const win = new THREE.Mesh(winGeo, winMat);
+      win.position.set(L / 2 + 0.05, radius / 2, 0);
+      group.add(win);
+    } else {
+      // Modular Box, Trombe Wall, or Earth-Bermed
+
+      // 1. Floor Foundation Slab
       const floorGeo = new THREE.BoxGeometry(L, 0.2, W);
-      const floorMat = new THREE.MeshStandardMaterial({ color: '#1e293b' });
+      const floorMat = new THREE.MeshStandardMaterial({
+        color: archetype === 'earth_bermed' ? '#1e293b' : '#334155',
+        metalness: 0.3,
+        roughness: 0.8
+      });
       const floor = new THREE.Mesh(floorGeo, floorMat);
       floor.position.y = 0.1;
       floor.receiveShadow = true;
       group.add(floor);
 
-      // 2. Main Wall Body
+      // 2. Main Wall Structure
       const wallGeo = new THREE.BoxGeometry(L, H, W);
       const wallMesh = new THREE.Mesh(
         wallGeo,
@@ -354,12 +368,13 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
       wallMesh.receiveShadow = true;
       group.add(wallMesh);
 
-      // 3. Pitched Roof
-      const pitchRad = (pitch * Math.PI) / 180;
+      // 3. Roof (Gable Pitch vs Flat)
+      const effectivePitch = archetype === 'modular_box' ? 0 : (pitch > 0 ? pitch : 15.0);
+      const pitchRad = (effectivePitch * Math.PI) / 180;
       const roofRise = (W / 2) * Math.tan(pitchRad);
 
-      if (pitch > 0) {
-        // Gable Triangular Prisms / Pitched Slabs
+      if (effectivePitch > 0) {
+        // Gable Triangular Pitched Slabs
         const roofSlabGeo = new THREE.BoxGeometry(L + 0.4, 0.15, (W / (2 * Math.cos(pitchRad))) + 0.3);
         
         // South Pitch
@@ -376,7 +391,7 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
         roofNorth.castShadow = true;
         group.add(roofNorth);
       } else {
-        // Flat Roof Slab
+        // Flat Modular Roof Slab with parapet edges
         const flatRoofGeo = new THREE.BoxGeometry(L + 0.4, 0.2, W + 0.4);
         const flatRoof = new THREE.Mesh(flatRoofGeo, roofMat);
         flatRoof.position.y = H + 0.3;
@@ -385,8 +400,8 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
       }
 
       // 4. Glazing / Solar Windows (South Facade: +Z coordinate)
-      const winW = Math.min(L * 0.75, Math.sqrt(winArea * 1.5));
-      const winH = Math.min(H * 0.65, winArea / Math.max(winW, 0.5));
+      const winW = Math.min(L * 0.75, Math.max(1.5, Math.sqrt(winArea * 1.5)));
+      const winH = Math.min(H * 0.65, Math.max(1.0, winArea / Math.max(winW, 0.5)));
       const windowGeo = new THREE.BoxGeometry(winW, winH, 0.12);
       const windowMesh = new THREE.Mesh(windowGeo, winMat);
       windowMesh.position.set(0, H / 2 + 0.2, W / 2 + 0.05);
@@ -398,14 +413,20 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
       frameEdge.position.set(0, H / 2 + 0.2, W / 2 + 0.02);
       group.add(frameEdge);
 
-      // 5. Trombe Wall Facade (if configured)
-      if (trombeArea > 0) {
-        const trombeW = Math.min(L * 0.4, trombeArea / 1.8);
-        const trombeH = 1.8;
-        const trombeGeo = new THREE.BoxGeometry(trombeW, trombeH, 0.25);
+      // 5. Trombe Wall Solar Storage Mass (South Facade)
+      if (effectiveTrombeArea > 0) {
+        const trombeW = Math.min(L * 0.45, Math.max(2.0, effectiveTrombeArea / 1.8));
+        const trombeH = 1.9;
+        const trombeGeo = new THREE.BoxGeometry(trombeW, trombeH, 0.28);
         const trombeMesh = new THREE.Mesh(trombeGeo, trombeMat);
-        trombeMesh.position.set(-L / 4, H / 2 + 0.1, W / 2 + 0.15);
+        trombeMesh.position.set(-L / 4, H / 2 + 0.1, W / 2 + 0.16);
         group.add(trombeMesh);
+
+        // Trombe Glazing Frame
+        const trombeGlassGeo = new THREE.BoxGeometry(trombeW + 0.1, trombeH + 0.1, 0.05);
+        const trombeGlass = new THREE.Mesh(trombeGlassGeo, winMat);
+        trombeGlass.position.set(-L / 4, H / 2 + 0.1, W / 2 + 0.32);
+        group.add(trombeGlass);
       }
 
       // 6. Tactical Entrance Airlock Door (West side)
@@ -425,19 +446,34 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
       group.add(line);
     }
 
-    // 8. Earth-Berm Soil Model (if berming active)
-    if (bermDepth > 0) {
-      const bermGeo = new THREE.ConeGeometry(Math.max(L, W) * 1.3, bermDepth * 1.5, 4);
+    // 8. Earth-Berm Soil Embankments (for Earth-Bermed Bunker Archetype)
+    if (effectiveBermDepth > 0) {
       const bermMat = new THREE.MeshStandardMaterial({
         color: '#475569',
         roughness: 0.95,
         wireframe: isWireframe,
       });
-      const berm = new THREE.Mesh(bermGeo, bermMat);
-      berm.position.set(0, (bermDepth * 1.5) / 2, -W * 0.3);
-      berm.rotation.y = Math.PI / 4;
-      berm.receiveShadow = true;
-      bermGroup.add(berm);
+
+      // North Berm (Rear)
+      const northBermGeo = new THREE.BoxGeometry(L * 1.4, effectiveBermDepth * 1.1, W * 0.7);
+      const northBerm = new THREE.Mesh(northBermGeo, bermMat);
+      northBerm.position.set(0, (effectiveBermDepth * 1.1) / 2, -W * 0.6);
+      northBerm.receiveShadow = true;
+      bermGroup.add(northBerm);
+
+      // East Berm (Side)
+      const eastBermGeo = new THREE.BoxGeometry(L * 0.6, effectiveBermDepth * 1.0, W * 1.2);
+      const eastBerm = new THREE.Mesh(eastBermGeo, bermMat);
+      eastBerm.position.set(-L * 0.6, (effectiveBermDepth * 1.0) / 2, 0);
+      eastBerm.receiveShadow = true;
+      bermGroup.add(eastBerm);
+
+      // West Berm (Side)
+      const westBermGeo = new THREE.BoxGeometry(L * 0.6, effectiveBermDepth * 1.0, W * 1.2);
+      const westBerm = new THREE.Mesh(westBermGeo, bermMat);
+      westBerm.position.set(L * 0.6, (effectiveBermDepth * 1.0) / 2, 0);
+      westBerm.receiveShadow = true;
+      bermGroup.add(westBerm);
     }
 
     // 9. Interior Troop Bunks

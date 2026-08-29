@@ -208,14 +208,30 @@ export const StrategicOverviewSection: React.FC<StrategicOverviewSectionProps> =
             <span className="text-xs font-bold text-[#8aebff] uppercase">Select Archetype:</span>
             <div className="flex items-center gap-2">
               {[
-                { id: 'modular_box', name: 'Modular Box' },
-                { id: 'trombe_wall', name: 'Trombe Wall' },
-                { id: 'earth_bermed', name: 'Earth-Bermed' },
-                { id: 'quonset_dome', name: 'Quonset Arch' },
+                {
+                  id: 'modular_box',
+                  name: 'Modular Box',
+                  config: { archetype: 'modular_box' as const, trombe_wall_area_m2: 0, earth_bermed_depth_m: 0, roof_pitch_deg: 0, window_area_m2: 2.0 }
+                },
+                {
+                  id: 'trombe_wall',
+                  name: 'Trombe Wall',
+                  config: { archetype: 'trombe_wall' as const, trombe_wall_area_m2: 4.5, earth_bermed_depth_m: 0, roof_pitch_deg: 15.0, window_area_m2: 3.8 }
+                },
+                {
+                  id: 'earth_bermed',
+                  name: 'Earth-Bermed',
+                  config: { archetype: 'earth_bermed' as const, earth_bermed_depth_m: 2.0, trombe_wall_area_m2: 0, roof_pitch_deg: 10.0, window_area_m2: 3.0 }
+                },
+                {
+                  id: 'quonset_dome',
+                  name: 'Quonset Arch',
+                  config: { archetype: 'quonset_dome' as const, trombe_wall_area_m2: 0, earth_bermed_depth_m: 0, roof_pitch_deg: 0, window_area_m2: 2.5 }
+                },
               ].map((arch) => (
                 <button
                   key={arch.id}
-                  onClick={() => onUpdateGeometry({ archetype: arch.id as any })}
+                  onClick={() => onUpdateGeometry(arch.config)}
                   className={`px-3 py-1.5 rounded text-xs font-bold uppercase transition-all ${
                     geometry.archetype === arch.id
                       ? 'bg-[#22d3ee] text-[#060e20] shadow-[0_0_12px_rgba(34,211,238,0.4)]'

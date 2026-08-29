@@ -198,12 +198,16 @@ export function App() {
     roofEnv: EnvelopeSection,
     wallEnv: EnvelopeSection,
     floorEnv: EnvelopeSection,
-    glazingId: string
+    glazingId: string,
+    troopCount?: number
   ) => {
     setGeometry((prev) => ({ ...prev, ...geomUpdates, glazing_id: glazingId }));
     setRoofEnvelope(roofEnv);
     setWallEnvelope(wallEnv);
     setFloorEnvelope(floorEnv);
+    if (troopCount && troopCount > 0) {
+      setParams((prev) => ({ ...prev, troops: troopCount }));
+    }
     setActiveSection('overview');
   };
 
@@ -327,6 +331,7 @@ export function App() {
               latitude={latitude}
               elevation={elevation}
               onApplyConfiguration={handleApplyExactDesign}
+              onNavigateTo={setActiveSection}
             />
           )}
 

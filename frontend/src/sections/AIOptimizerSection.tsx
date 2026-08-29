@@ -34,8 +34,10 @@ interface AIOptimizerSectionProps {
     roofEnv: EnvelopeSection,
     wallEnv: EnvelopeSection,
     floorEnv: EnvelopeSection,
-    glazingId: string
+    glazingId: string,
+    troops?: number
   ) => void;
+  onNavigateTo?: (section: any) => void;
 }
 
 export const AIOptimizerSection: React.FC<AIOptimizerSectionProps> = ({
@@ -45,15 +47,20 @@ export const AIOptimizerSection: React.FC<AIOptimizerSectionProps> = ({
   latitude,
   elevation,
   onApplyConfiguration,
+  onNavigateTo,
 }) => {
   // Parametric Overrides state matching exact screenshot
-  const [targetOccupancy, setTargetOccupancy] = useState<number>(initialTroops || 12);
+  const [targetOccupancy, setTargetOccupancy] = useState<number>(initialTroops || 8);
   const [windLoadFactor, setWindLoadFactor] = useState<number>(45); // m/s
   const [solarGainCoeff, setSolarGainCoeff] = useState<number>(0.4);
 
   const [loading, setLoading] = useState<boolean>(false);
   const [selectedModelId, setSelectedModelId] = useState<string>('as7');
   const [appliedModelId, setAppliedModelId] = useState<string>('as7');
+
+  // Dynamic scaling factors
+  const occScale = Math.max(0.4, targetOccupancy / 8.0);
+  const windScale = Math.max(0.5, windLoadFactor / 45.0);
 
   // Exact Model Specifications based on live thermodynamic engine
   const models = [
@@ -64,22 +71,24 @@ export const AIOptimizerSection: React.FC<AIOptimizerSectionProps> = ({
       archetype: 'trombe_wall',
       badge: 'TOP REC',
       isTopRec: true,
-      uValue: '0.12 W/m²K',
-      weightKg: 1250,
+      uValue: `${(0.12 * (1.0 / (solarGainCoeff * 1.5 + 0.4))).toFixed(2)} W/m²K`,
+      weightKg: Math.round(1250 * occScale * (0.8 + 0.2 * windScale)),
       fuelSav: '+98.5%',
       fuelSavLabel: '+15%',
-      cost5y: '₹14.2 L',
+      cost5y: `₹${(14.2 * occScale * (0.85 + 0.15 * windScale)).toFixed(1)} L`,
       perfIndex: '9.4 / 10',
-      rValue: 8.33,
+      rValue: parseFloat((8.33 * (solarGainCoeff * 1.2 + 0.5)).toFixed(2)),
       primaryMaterial: 'PUF Core + Aerogel Blanket',
       description: 'Passive solar Trombe wall with 100mm PUF composite. Optimal balance of thermal lag and logistics payload.',
       geometry: {
         archetype: 'trombe_wall' as const,
-        length_m: 6.0,
-        width_m: 4.0,
+        length_m: parseFloat((Math.max(4.5, 3.5 + targetOccupancy * 0.3)).toFixed(1)),
+        width_m: parseFloat((Math.max(3.5, 2.8 + targetOccupancy * 0.12)).toFixed(1)),
         height_m: 2.8,
-        window_area_m2: 3.8,
+        roof_pitch_deg: 15.0,
+        window_area_m2: parseFloat((Math.max(1.8, 3.8 * (solarGainCoeff / 0.4))).toFixed(1)),
         trombe_wall_area_m2: 4.5,
+        earth_bermed_depth_m: 0.0,
       },
       roofEnv: {
         layers: [
@@ -109,21 +118,23 @@ export const AIOptimizerSection: React.FC<AIOptimizerSectionProps> = ({
       badge: null,
       isTopRec: false,
       uValue: '0.25 W/m²K',
-      weightKg: 850,
+      weightKg: Math.round(850 * occScale * (0.85 + 0.15 * windScale)),
       fuelSav: '+88.2%',
       fuelSavLabel: '-5%',
-      cost5y: '₹8.5 L',
+      cost5y: `₹${(8.5 * occScale).toFixed(1)} L`,
       perfIndex: '6.5 / 10',
       rValue: 4.0,
       primaryMaterial: 'Carbon Frame + Insulated Tent Liner',
       description: 'Ultralight rapid deployment for forward reconnaissance patrols. Lower thermal mass, higher auxiliary heat needed.',
       geometry: {
         archetype: 'modular_box' as const,
-        length_m: 5.0,
-        width_m: 3.5,
+        length_m: parseFloat((Math.max(4.0, 3.0 + targetOccupancy * 0.25)).toFixed(1)),
+        width_m: parseFloat((Math.max(3.0, 2.4 + targetOccupancy * 0.12)).toFixed(1)),
         height_m: 2.4,
-        window_area_m2: 1.5,
+        roof_pitch_deg: 0.0,
+        window_area_m2: parseFloat((Math.max(1.0, 1.5 * (solarGainCoeff / 0.4))).toFixed(1)),
         trombe_wall_area_m2: 0.0,
+        earth_bermed_depth_m: 0.0,
       },
       roofEnv: {
         layers: [{ material_id: 'canvas_insulated', thickness_mm: 30 }],
@@ -144,20 +155,21 @@ export const AIOptimizerSection: React.FC<AIOptimizerSectionProps> = ({
       badge: null,
       isTopRec: false,
       uValue: '0.08 W/m²K',
-      weightKg: 2100,
+      weightKg: Math.round(2100 * occScale * (0.8 + 0.2 * windScale)),
       fuelSav: '+99.4%',
       fuelSavLabel: '+22%',
-      cost5y: '₹22.8 L',
+      cost5y: `₹${(22.8 * occScale * (0.85 + 0.15 * windScale)).toFixed(1)} L`,
       perfIndex: '9.9 / 10',
       rValue: 12.5,
       primaryMaterial: 'Vacuum Insulation Panel (VIP) + Rammed Stone',
       description: 'Deep-glacier fortified shelter with near-zero heat loss. Extreme R-value for Siachen Ridge / sub -35°C zones.',
       geometry: {
         archetype: 'earth_bermed' as const,
-        length_m: 6.5,
-        width_m: 4.5,
+        length_m: parseFloat((Math.max(5.0, 4.0 + targetOccupancy * 0.3)).toFixed(1)),
+        width_m: parseFloat((Math.max(4.0, 3.2 + targetOccupancy * 0.15)).toFixed(1)),
         height_m: 2.8,
-        window_area_m2: 3.0,
+        roof_pitch_deg: 10.0,
+        window_area_m2: parseFloat((Math.max(1.5, 3.0 * (solarGainCoeff / 0.4))).toFixed(1)),
         trombe_wall_area_m2: 0.0,
         earth_bermed_depth_m: 2.0,
       },
@@ -191,9 +203,13 @@ export const AIOptimizerSection: React.FC<AIOptimizerSectionProps> = ({
       model.roofEnv,
       model.wallEnv,
       model.floorEnv,
-      model.glazingId
+      model.glazingId,
+      targetOccupancy
     );
     setAppliedModelId(model.id);
+    if (onNavigateTo) {
+      onNavigateTo('overview');
+    }
   };
 
   const handleRecalculate = () => {
