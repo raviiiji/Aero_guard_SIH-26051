@@ -259,6 +259,16 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                   <Line
                     yAxisId="power"
                     type="monotone"
+                    dataKey="internal_gain_w"
+                    name="Troop Metabolic Heat (85W/Soldier ASHRAE)"
+                    stroke="#10b981"
+                    strokeWidth={2}
+                    strokeDasharray="3 3"
+                    dot={false}
+                  />
+                  <Line
+                    yAxisId="power"
+                    type="monotone"
                     dataKey="total_loss_w"
                     name="Total Heat Loss (W)"
                     stroke="#8b5cf6"
@@ -362,6 +372,23 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
                 />
               </div>
             </div>
+          </div>
+
+          {/* ASHRAE Standard 55 & Metabolic Heat Box */}
+          <div className="mt-3 p-2.5 bg-[#060e20] border border-emerald-500/30 rounded-md space-y-1 text-[11px]">
+            <div className="flex items-center justify-between text-emerald-400 font-bold uppercase text-[10px]">
+              <span className="flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                ASHRAE Standard 55 & Troop Metabolic Heat
+              </span>
+              <span className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-300 rounded border border-emerald-500/20 text-[9px]">
+                85W / SOLDIER (1.0 MET)
+              </span>
+            </div>
+            <p className="text-slate-300 leading-relaxed text-[10px]">
+              Per global <strong className="text-emerald-300">ASHRAE 55 & ISO 8996</strong> standards, each resting soldier generates <strong className="text-emerald-300">85 Watts</strong> of metabolic heat. 
+              Inside the insulated shelter envelope, troops act as an internal <strong className="text-emerald-300">{summary.total_daily_metabolic_gain_kwh ? (summary.total_daily_metabolic_gain_kwh * 1000 / 24).toFixed(0) : '680'}W heater</strong> ({summary.total_daily_metabolic_gain_kwh || '16.3'} kWh/day), significantly reducing the diesel needed to maintain comfortable indoor temperatures.
+            </p>
           </div>
         </div>
 
