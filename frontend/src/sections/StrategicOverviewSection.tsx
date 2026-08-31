@@ -132,62 +132,102 @@ export const StrategicOverviewSection: React.FC<StrategicOverviewSectionProps> =
         )}
       </div>
 
-      {/* 2. Interactive Quick Mission Sliders (Live Control Bar) */}
-      <div className="tactical-glass p-3 rounded-lg grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-        <div className="bg-[#131b2e] p-2.5 rounded border border-[#8aebff]/20 space-y-1">
-          <div className="flex justify-between items-center text-[#bbc9cd]">
-            <span className="flex items-center gap-1">
-              <Users className="w-3.5 h-3.5 text-[#8aebff]" /> Troops (People):
+      {/* 2. Live Mission Profile & Operational Baseline (Fetched from Mission Config) */}
+      <div className="tactical-glass p-3.5 rounded-lg border border-[#8aebff]/30 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[#8aebff]/20 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#45da7d] animate-pulse" />
+            <span className="font-bold text-[#8aebff] uppercase tracking-wider">
+              Active Mission Profile & Baseline (Synchronized from Mission Config)
             </span>
-            <strong className="text-[#8aebff]">{params.troops} Soldiers</strong>
           </div>
-          <input
-            type="range"
-            min="2"
-            max="24"
-            value={params.troops}
-            onChange={(e) => onUpdateParams({ troops: parseInt(e.target.value) })}
-            aria-label="Quick Troops Slider"
-            className="w-full h-1.5 bg-[#060e20] rounded appearance-none cursor-pointer accent-[#8aebff]"
-          />
+          <button
+            onClick={() => onNavigateTo('mission_config')}
+            className="text-[11px] font-bold text-[#22d3ee] hover:text-[#8aebff] flex items-center gap-1.5 transition-colors"
+          >
+            <span>⚙️ Configure Mission Parameters in Mission Config</span>
+            <ArrowRight className="w-3 h-3" />
+          </button>
         </div>
 
-        <div className="bg-[#131b2e] p-2.5 rounded border border-[#8aebff]/20 space-y-1">
-          <div className="flex justify-between items-center text-[#bbc9cd]">
-            <span className="flex items-center gap-1">
-              <Thermometer className="w-3.5 h-3.5 text-[#fb923c]" /> Target Comfort Temp:
-            </span>
-            <strong className="text-[#fb923c]">{params.target_temp_c}°C</strong>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs">
+          {/* Item 1: Troop Deployment */}
+          <div className="bg-[#131b2e] p-2.5 rounded border border-[#8aebff]/20">
+            <div className="flex items-center gap-1 text-[10px] text-[#bbc9cd]">
+              <Users className="w-3 h-3 text-[#8aebff]" /> Target Occupancy:
+            </div>
+            <div className="font-bold text-[#8aebff] text-sm mt-0.5">
+              {params.troops} Soldiers
+            </div>
+            <div className="text-[9px] text-[#45da7d] mt-0.5">
+              +{params.troops * 85}W Body Heat (ASHRAE)
+            </div>
           </div>
-          <input
-            type="range"
-            min="14"
-            max="24"
-            step="0.5"
-            value={params.target_temp_c}
-            onChange={(e) => onUpdateParams({ target_temp_c: parseFloat(e.target.value) })}
-            aria-label="Quick Target Temp Slider"
-            className="w-full h-1.5 bg-[#060e20] rounded appearance-none cursor-pointer accent-[#fb923c]"
-          />
-        </div>
 
-        <div className="bg-[#131b2e] p-2.5 rounded border border-[#8aebff]/20 space-y-1">
-          <div className="flex justify-between items-center text-[#bbc9cd]">
-            <span className="flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-[#45da7d]" /> Campaign Duration:
-            </span>
-            <strong className="text-[#45da7d]">{params.mission_duration_days} Days</strong>
+          {/* Item 2: Target Indoor Temperature */}
+          <div className="bg-[#131b2e] p-2.5 rounded border border-[#8aebff]/20">
+            <div className="flex items-center gap-1 text-[10px] text-[#bbc9cd]">
+              <Thermometer className="w-3 h-3 text-[#fb923c]" /> Target Temp:
+            </div>
+            <div className="font-bold text-[#fb923c] text-sm mt-0.5">
+              {params.target_temp_c}°C
+            </div>
+            <div className="text-[9px] text-[#bbc9cd] mt-0.5">
+              DRDO DGQA Spec
+            </div>
           </div>
-          <input
-            type="range"
-            min="30"
-            max="180"
-            step="15"
-            value={params.mission_duration_days}
-            onChange={(e) => onUpdateParams({ mission_duration_days: parseInt(e.target.value) })}
-            aria-label="Quick Mission Duration Slider"
-            className="w-full h-1.5 bg-[#060e20] rounded appearance-none cursor-pointer accent-[#45da7d]"
-          />
+
+          {/* Item 3: Campaign Duration */}
+          <div className="bg-[#131b2e] p-2.5 rounded border border-[#8aebff]/20">
+            <div className="flex items-center gap-1 text-[10px] text-[#bbc9cd]">
+              <Calendar className="w-3 h-3 text-[#45da7d]" /> Campaign Horizon:
+            </div>
+            <div className="font-bold text-[#45da7d] text-sm mt-0.5">
+              {params.mission_duration_days} Days
+            </div>
+            <div className="text-[9px] text-[#bbc9cd] mt-0.5">
+              {params.mission_duration_days * 24}h Simulation
+            </div>
+          </div>
+
+          {/* Item 4: Air Infiltration Rate */}
+          <div className="bg-[#131b2e] p-2.5 rounded border border-[#8aebff]/20">
+            <div className="flex items-center gap-1 text-[10px] text-[#bbc9cd]">
+              <Compass className="w-3 h-3 text-[#22d3ee]" /> Air Infiltration:
+            </div>
+            <div className="font-bold text-[#22d3ee] text-sm mt-0.5">
+              {params.infiltration_ach_base} ACH
+            </div>
+            <div className="text-[9px] text-[#bbc9cd] mt-0.5">
+              Airlock Sealed Buffer
+            </div>
+          </div>
+
+          {/* Item 5: Internal Electronics & C2 Heat */}
+          <div className="bg-[#131b2e] p-2.5 rounded border border-[#8aebff]/20">
+            <div className="flex items-center gap-1 text-[10px] text-[#bbc9cd]">
+              <Zap className="w-3 h-3 text-[#f59e0b]" /> Equipment Heat:
+            </div>
+            <div className="font-bold text-[#f59e0b] text-sm mt-0.5">
+              {params.equipment_heat_w} W
+            </div>
+            <div className="text-[9px] text-[#bbc9cd] mt-0.5">
+              Tactical Radios / C2
+            </div>
+          </div>
+
+          {/* Item 6: Burner Efficiency */}
+          <div className="bg-[#131b2e] p-2.5 rounded border border-[#8aebff]/20">
+            <div className="flex items-center gap-1 text-[10px] text-[#bbc9cd]">
+              <Flame className="w-3 h-3 text-[#fb923c]" /> Burner Efficiency:
+            </div>
+            <div className="font-bold text-[#dae2fd] text-sm mt-0.5">
+              {(params.burner_efficiency * 100).toFixed(0)}%
+            </div>
+            <div className="text-[9px] text-[#bbc9cd] mt-0.5">
+              {params.diesel_energy_density_kwh_l} kWh/L Arctic SKO
+            </div>
+          </div>
         </div>
       </div>
 
