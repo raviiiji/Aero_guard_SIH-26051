@@ -118,8 +118,43 @@ input[type=range]::-webkit-slider-runnable-track {
   font-family: inherit;
 }
 
+/*
+ * Tactical dark treatment for the basemap behind the 3D shelter.
+ *
+ * This deliberately does NOT invert the raster any more. A full invert reads as
+ * a brown/orange wash on real imagery and makes topography unreadable, and the
+ * 3D view now defaults to real satellite imagery where inversion is actively
+ * misleading (vegetation and rock turn false colours). Dimming and muting the
+ * raster keeps the dark command-console look while leaving the actual geography
+ * legible underneath the shelter model.
+ */
 .leaflet-tile {
-  filter: brightness(0.65) invert(1) contrast(2.8) hue-rotate(195deg) saturate(0.4) brightness(0.75);
+  filter: brightness(0.62) saturate(0.5) contrast(1.25);
+}
+
+.leaflet-container--accurate .leaflet-tile {
+  filter: saturate(0.85) contrast(1.02) brightness(0.94);
+}
+
+/* Keep the chrome dark even when the raster is not inverted. */
+.leaflet-container--accurate {
+  background-color: #0a1226 !important;
+}
+
+.leaflet-container--accurate .leaflet-control-attribution {
+  background: rgba(6, 14, 32, 0.86) !important;
+  color: #94a3b8 !important;
+  font-size: 9px !important;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.leaflet-container--accurate .leaflet-control-attribution a {
+  color: #67e8f9 !important;
+}
+
+/* The attribution control must never sit on top of the coordinate readout. */
+.leaflet-bottom.leaflet-right {
+  z-index: 450;
 }
 
 .leaflet-popup-content-wrapper {
@@ -132,6 +167,77 @@ input[type=range]::-webkit-slider-runnable-track {
 
 .leaflet-popup-tip {
   background: #131b2e !important;
+}
+
+.leaflet-popup-content {
+  margin: 8px 10px !important;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/*
+ * Live map markers. Leaflet only needs a positioned wrapper for a DivIcon; the
+ * glyphs below are the visible parts and they share the project's cyan/amber
+ * language so the active shelter and the pending destination never look alike.
+ */
+.aero-shelter-marker,
+.aero-destination-marker,
+.aero-reference-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.aero-shelter-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.35) 0%, rgba(6, 182, 212, 0) 70%);
+  box-shadow: 0 0 16px rgba(34, 211, 238, 0.55);
+  animation: aero-pulse 2.4s ease-in-out infinite;
+}
+
+.aero-destination-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.3) 0%, rgba(251, 191, 36, 0) 70%);
+  box-shadow: 0 0 14px rgba(251, 191, 36, 0.5);
+  animation: aero-pulse 1.8s ease-in-out infinite;
+}
+
+.aero-reference-glyph {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fbbf24;
+  border: 1px solid #1c1917;
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.6);
+  opacity: 0.75;
+}
+
+@keyframes aero-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 0.82;
+  }
+}
+
+/* Respect the OS reduced-motion setting for the pulsing markers. */
+@media (prefers-reduced-motion: reduce) {
+  .aero-shelter-glyph,
+  .aero-destination-glyph {
+    animation: none;
+  }
 }
 
 .tactical-badge {

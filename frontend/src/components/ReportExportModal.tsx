@@ -88,10 +88,10 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
             </div>
             <div>
               <h2 className="text-sm font-bold uppercase tracking-wider text-slate-100">
-                DRDO Technical Assessment Dossier & Dossier Export
+                Technical Assessment &amp; Shelter Digital Twin Dossier
               </h2>
               <p className="text-[11px] text-slate-400">
-                Problem Statement ID: 26051 | Project AERO-SHIELD Area Specific Thermal Shelter
+                AERO-SHIELD — SIH 26051 Project Demonstrator | Area-Specific Thermal Shelter
               </p>
             </div>
           </div>

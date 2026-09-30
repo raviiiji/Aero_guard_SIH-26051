@@ -11,6 +11,7 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    strictPort: true,
   },
   build: {
     // Increase warning threshold slightly since we have heavy 3D/chart libs

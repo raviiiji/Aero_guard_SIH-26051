@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import gsap from 'gsap';
@@ -11,14 +11,54 @@ import {
   Maximize2,
   RotateCcw,
   Box,
+  MapPin,
+  Mountain,
 } from 'lucide-react';
-import { ShelterGeometry, SimulationResult } from '../types';
+import { ShelterGeometry, SimulationResult, ShelterAnchor, ShelterPartId, ShelterTerrain } from '../types';
+import type { MapCameraState } from '../hooks/useMapGeoSync';
+import { geoToScene, type SceneOrigin } from '../services/geoProjection';
+import { applyMapCamera } from '../services/geoCamera';
+import { SHELTER_PARTS } from '../services/shelterApi';
+
+const SHELTER_PART_LABELS: Record<ShelterPartId, string> = Object.fromEntries(
+  Object.entries(SHELTER_PARTS).map(([id, meta]) => [id, meta.label])
+) as Record<ShelterPartId, string>;
 
 interface Shelter3DViewerProps {
   geometry: ShelterGeometry;
   simResult: SimulationResult | null;
   troops: number;
   simulatedHour?: number;
+  /**
+   * Geographic anchor. When present the shelter is seated on real DEM terrain
+   * and rotated to the anchor heading. When absent the viewer behaves exactly
+   * as before (flat tactical grid, origin-centred).
+   */
+  anchor?: ShelterAnchor | null;
+  /** Real DEM grid sampled around the anchor, in a WGS84 local tangent plane. */
+  terrain?: ShelterTerrain | null;
+  /** Fired when a shelter subsystem mesh is clicked. */
+  onPartSelect?: (part: ShelterPartId) => void;
+  /** Fired when the shelter body itself is clicked. */
+  onShelterSelect?: () => void;
+  /** Externally highlighted subsystem (e.g. from the info panel). */
+  highlightPart?: ShelterPartId | null;
+  /** Show the clickable equipment props around the shelter. */
+  showEquipment?: boolean;
+  /**
+   * Map camera published by the existing Leaflet map. When present, the 3D
+   * camera is derived from it every frame so the scene is geospatially locked
+   * to the map: panning or zooming the map moves the scene identically.
+   */
+  cameraSync?: MapCameraState | null;
+  /**
+   * Origin of the 3D scene in WGS84. Defaults to the map camera centre, so
+   * scene (0,0,0) is the map centre and the shelter is placed by projecting
+   * its real coordinates relative to it.
+   */
+  sceneOrigin?: SceneOrigin | null;
+  /** Render with a transparent background so the map shows through. */
+  overlay?: boolean;
 }
 
 type RenderMode = 'CAMO' | 'THERMAL_IR' | 'SOLAR_RAYS' | 'INTERIOR_BUNKS';
@@ -28,6 +68,15 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
   simResult,
   troops,
   simulatedHour = 12,
+  anchor = null,
+  terrain = null,
+  onPartSelect,
+  onShelterSelect,
+  highlightPart = null,
+  showEquipment = false,
+  cameraSync = null,
+  sceneOrigin: sceneOriginProp = null,
+  overlay = false,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const [renderMode, setRenderMode] = useState<RenderMode>('CAMO');
@@ -40,11 +89,142 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const shelterGroupRef = useRef<THREE.Group | null>(null);
+
   const sunLightRef = useRef<THREE.DirectionalLight | null>(null);
   const sunSphereRef = useRef<THREE.Mesh | null>(null);
   const bunksGroupRef = useRef<THREE.Group | null>(null);
   const earthBermGroupRef = useRef<THREE.Group | null>(null);
   const solarRayArrowRef = useRef<THREE.ArrowHelper | null>(null);
+  const cameraSyncRef = useRef<MapCameraState | null>(null);
+  const overlayRef = useRef(overlay);
+  useEffect(() => {
+    overlayRef.current = overlay;
+  }, [overlay]);
+  const sceneOriginRef = useRef<SceneOrigin | null>(null);
+  const [selectedPart, setSelectedPart] = useState<ShelterPartId | null>(null);
+
+  /**
+   * Cut-and-fill pad geometry for the shelter footprint: the half-extents, the
+   * vertical lift that keeps the shell out of the ground, and the pad
+   * thickness needed to reach the lowest corner of the footprint.
+   */
+  const computePad = useCallback(
+    (
+      g: ShelterGeometry,
+      t: ShelterTerrain | null,
+      a: ShelterAnchor | null | undefined,
+      sample: (x: number, z: number) => number
+    ) => {
+      const padX = g.length_m / 2 + 1.4;
+      const padZ = g.width_m / 2 + 1.4;
+      if (!t || !a) return { padX, padZ, lift: 0, padH: 0.05 };
+      const corners = [
+        sample(-padX, -padZ),
+        sample(padX, -padZ),
+        sample(-padX, padZ),
+        sample(padX, padZ),
+      ];
+      const lift = Math.max(...corners, 0);
+      const padH = Math.max(0.05, lift - Math.min(...corners, 0) + 0.1);
+      return { padX, padZ, lift, padH };
+    },
+    []
+  );
+
+  /** Report 3D clicks upward. Selection is owned by the parent, so the viewer
+   *  stays a pure view and never duplicates highlight state. */
+  const handlePartSelect = useCallback(
+    (part: ShelterPartId) => {
+      setSelectedPart(part);
+      onPartSelect?.(part);
+    },
+    [onPartSelect]
+  );
+
+  // Parent-supplied highlight wins; otherwise fall back to the local 3D pick.
+  const activePart = highlightPart ?? (showEquipment ? selectedPart : null);
+
+  // The render loop reads these, so mirror them into refs instead of forcing
+  // the WebGL context to be torn down and rebuilt on every map move.
+  useEffect(() => {
+    cameraSyncRef.current = cameraSync;
+  }, [cameraSync]);
+
+  const activeSceneOrigin = useMemo<SceneOrigin | null>(() => {
+    if (sceneOriginProp) return sceneOriginProp;
+    if (cameraSync) {
+      return {
+        latitude: cameraSync.center.latitude,
+        longitude: cameraSync.center.longitude,
+        elevation: cameraSync.centerElevation,
+      };
+    }
+    return null;
+  }, [sceneOriginProp, cameraSync]);
+
+  useEffect(() => {
+    sceneOriginRef.current = activeSceneOrigin;
+  }, [activeSceneOrigin]);
+
+  /**
+   * Where the shelter sits in scene metres, derived from its real coordinates
+   * relative to the map-centred scene origin. This is the only place the
+   * shelter's position is decided, so the 3D shelter cannot drift from the
+   * map point it is anchored to.
+   */
+  const anchorScenePoint = useMemo(() => {
+    if (!anchor || !activeSceneOrigin) return null;
+    return geoToScene(
+      { latitude: anchor.latitude, longitude: anchor.longitude, elevation: anchor.elevation },
+      activeSceneOrigin
+    );
+  }, [anchor, activeSceneOrigin]);
+
+  const terrainMeshRef = useRef<THREE.Mesh | null>(null);
+  const equipmentGroupRef = useRef<THREE.Group | null>(null);
+  const flatGroundRef = useRef<THREE.Object3D[]>([]);
+  const hoveredPartRef = useRef<ShelterPartId | null>(null);
+
+  /** Bilinear sample of the DEM grid in local tangent-plane metres. */
+  const sampleTerrain = useCallback(
+    (x: number, z: number): number => {
+      if (!terrain) return 0;
+      const n = terrain.samples;
+      const half = terrain.span_m / 2;
+      const fx = (x + half) / terrain.span_m; // 0..1 west->east
+      const fz = (half - z) / terrain.span_m; // 0..1 north->south
+      const gx = Math.min(Math.max(fx * (n - 1), 0), n - 1);
+      const gz = Math.min(Math.max(fz * (n - 1), 0), n - 1);
+      const x0 = Math.floor(gx);
+      const z0 = Math.floor(gz);
+      const x1 = Math.min(x0 + 1, n - 1);
+      const z1 = Math.min(z0 + 1, n - 1);
+      const tx = gx - x0;
+      const tz = gz - z0;
+      const a = terrain.grid_m[z0][x0] * (1 - tx) + terrain.grid_m[z0][x1] * tx;
+      const b = terrain.grid_m[z1][x0] * (1 - tx) + terrain.grid_m[z1][x1] * tx;
+      // Relative to the anchor elevation, so the anchor itself sits at y = 0.
+      return a * (1 - tz) + b * tz - (anchor ? anchor.elevation : 0);
+    },
+    [terrain, anchor]
+  );
+
+  // Extend the camera far plane / orbit range only when georeferenced terrain
+  // is active, so the original un-anchored framing is left untouched.
+  useEffect(() => {
+    const cam = cameraRef.current;
+    const ctrl = controlsRef.current;
+    if (!cam || !ctrl) return;
+    if (anchor && terrain) {
+      cam.far = 5000;
+      cam.updateProjectionMatrix();
+      ctrl.maxDistance = 400;
+    } else {
+      cam.far = 100;
+      cam.updateProjectionMatrix();
+      ctrl.maxDistance = 35;
+    }
+  }, [anchor, terrain]);
 
   // Initialize Three.js Scene
   useEffect(() => {
@@ -55,12 +235,19 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
 
     // 1. Scene
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#070b14');
-    scene.fog = new THREE.FogExp2('#070b14', 0.035);
+    if (overlayRef.current) {
+      // Overlay mode: the Leaflet map is the backdrop, so the scene must be
+      // fully transparent and unfogged or it would paint over the map.
+      scene.background = null;
+      scene.fog = null;
+    } else {
+      scene.background = new THREE.Color('#070b14');
+      scene.fog = new THREE.FogExp2('#070b14', 0.035);
+    }
     sceneRef.current = scene;
 
     // 2. Camera
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
+    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 5000);
     camera.position.set(10, 8, 12);
     cameraRef.current = camera;
 
@@ -72,6 +259,11 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
+    // In overlay mode the map is the backdrop, so keep the buffer transparent
+    // and drop the fog that would otherwise tint it.
+    if (overlayRef.current) {
+      renderer.setClearColor(0x000000, 0);
+    }
     rendererRef.current = renderer;
 
     mountRef.current.replaceChildren(renderer.domElement);
@@ -126,6 +318,9 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
     ground.receiveShadow = true;
     scene.add(ground);
 
+    // Retained so they can be hidden when real terrain is loaded.
+    flatGroundRef.current = [grid, ground];
+
     // 7. Shelter Root Group
     const shelterGroup = new THREE.Group();
     scene.add(shelterGroup);
@@ -145,7 +340,16 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
     let animationFrameId: number;
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
-      controls.update();
+
+      const sync = cameraSyncRef.current;
+      if (sync) {
+        applyMapCamera(camera, sync);
+        // OrbitControls would fight the map, so they are inert while synced.
+        controls.enabled = false;
+      } else {
+        controls.enabled = true;
+        controls.update();
+      }
       renderer.render(scene, camera);
     };
     animate();
@@ -321,6 +525,7 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
       archMesh.position.set(0, radius, 0);
       archMesh.castShadow = true;
       archMesh.receiveShadow = true;
+      archMesh.userData.part = 'shelter_shell';
       group.add(archMesh);
 
       // End Caps
@@ -328,6 +533,7 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
       const endCap1 = new THREE.Mesh(endCapGeo, wallMat);
       endCap1.position.set(-L / 2, radius, 0);
       endCap1.rotation.y = -Math.PI / 2;
+      endCap1.userData.part = 'shelter_shell';
       group.add(endCap1);
 
       const endCap2 = new THREE.Mesh(endCapGeo, wallMat);
@@ -339,6 +545,7 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
       const winGeo = new THREE.BoxGeometry(0.1, 1.2, 1.4);
       const win = new THREE.Mesh(winGeo, winMat);
       win.position.set(L / 2 + 0.05, radius / 2, 0);
+      win.userData.part = 'glazing';
       group.add(win);
     } else {
       // Modular Box, Trombe Wall, or Earth-Bermed
@@ -366,6 +573,7 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
       wallMesh.position.y = H / 2 + 0.2;
       wallMesh.castShadow = true;
       wallMesh.receiveShadow = true;
+      wallMesh.userData.part = 'shelter_shell';
       group.add(wallMesh);
 
       // 3. Roof (Gable Pitch vs Flat)
@@ -382,6 +590,7 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
         roofSouth.position.set(0, H + 0.2 + roofRise / 2, W / 4);
         roofSouth.rotation.x = pitchRad;
         roofSouth.castShadow = true;
+        roofSouth.userData.part = 'shelter_shell';
         group.add(roofSouth);
 
         // North Pitch
@@ -389,6 +598,7 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
         roofNorth.position.set(0, H + 0.2 + roofRise / 2, -W / 4);
         roofNorth.rotation.x = -pitchRad;
         roofNorth.castShadow = true;
+        roofNorth.userData.part = 'shelter_shell';
         group.add(roofNorth);
       } else {
         // Flat Modular Roof Slab with parapet edges
@@ -426,6 +636,7 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
         const trombeGlassGeo = new THREE.BoxGeometry(trombeW + 0.1, trombeH + 0.1, 0.05);
         const trombeGlass = new THREE.Mesh(trombeGlassGeo, winMat);
         trombeGlass.position.set(-L / 4, H / 2 + 0.1, W / 2 + 0.32);
+        trombeGlass.userData.part = 'glazing';
         group.add(trombeGlass);
       }
 
@@ -434,6 +645,7 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
       const doorMat = new THREE.MeshStandardMaterial({ color: '#06b6d4', metalness: 0.7 });
       const door = new THREE.Mesh(doorGeo, doorMat);
       door.position.set(L / 2 + 0.05, 1.9 / 2 + 0.2, 0);
+      door.userData.part = 'entrance';
       group.add(door);
 
       // 7. Structural Frame Edge Highlights
@@ -459,6 +671,7 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
       const northBerm = new THREE.Mesh(northBermGeo, bermMat);
       northBerm.position.set(0, (effectiveBermDepth * 1.1) / 2, -W * 0.6);
       northBerm.receiveShadow = true;
+      northBerm.userData.part = 'shelter_shell';
       bermGroup.add(northBerm);
 
       // East Berm (Side)
@@ -514,6 +727,275 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
       { x: 1.0, y: 1.0, z: 1.0, duration: 0.35, ease: 'power2.out' }
     );
   }, [geometry, renderMode, isWireframe, troops]);
+
+  // -------------------------------------------------------------------------
+  // Georeferenced terrain: displace a plane by the real DEM grid
+  // Local tangent plane: x = +East, z = -North, y = up. 1 unit = 1 metre.
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    const previous = terrainMeshRef.current;
+    if (previous) {
+      scene.remove(previous);
+      previous.geometry.dispose();
+      (previous.material as THREE.Material).dispose();
+      terrainMeshRef.current = null;
+    }
+
+    const useTerrain = Boolean(terrain && anchor);
+    flatGroundRef.current.forEach((o) => {
+      o.visible = !useTerrain;
+    });
+
+    if (!useTerrain || !terrain || !anchor) return;
+
+    const n = terrain.samples;
+    const geo = new THREE.PlaneGeometry(terrain.span_m, terrain.span_m, n - 1, n - 1);
+    const pos = geo.attributes.position as THREE.BufferAttribute;
+    const colors = new Float32Array(n * n * 3);
+
+    const lo = terrain.min_elevation_m;
+    const hi = terrain.max_elevation_m;
+    const range = Math.max(1, hi - lo);
+
+    for (let iy = 0; iy < n; iy++) {
+      for (let ix = 0; ix < n; ix++) {
+        const i = iy * n + ix;
+        const elev = terrain.grid_m[iy][ix];
+        // Local +Y of the plane maps to world -Z after the -90 deg X rotation.
+        pos.setZ(i, elev - anchor.elevation);
+        // Tint by relative elevation: low = exposed rock, high = snow.
+        const t = (elev - lo) / range;
+        colors[i * 3] = 0.16 + 0.74 * t;
+        colors[i * 3 + 1] = 0.2 + 0.74 * t;
+        colors[i * 3 + 2] = 0.3 + 0.7 * t;
+      }
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+
+    const mat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.95,
+      metalness: 0.0,
+      wireframe: isWireframe,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    terrainMeshRef.current = mesh;
+  }, [terrain, anchor, isWireframe]);
+
+  // -------------------------------------------------------------------------
+  // Orient the shelter to the anchor heading (0 deg = north, compass).
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const heading = anchor?.heading ?? 0;
+    // Scene convention: -Z is north, +X is east.
+    const yaw = THREE.MathUtils.degToRad(heading - 180);
+    if (shelterGroupRef.current) shelterGroupRef.current.rotation.y = yaw;
+    if (bunksGroupRef.current) bunksGroupRef.current.rotation.y = yaw;
+    if (earthBermGroupRef.current) earthBermGroupRef.current.rotation.y = yaw;
+    if (equipmentGroupRef.current) equipmentGroupRef.current.rotation.y = yaw;
+  }, [anchor?.heading]);
+
+  // -------------------------------------------------------------------------
+  // Clickable equipment subsystems, seated on the real terrain
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    let old = equipmentGroupRef.current;
+    if (old) {
+      scene.remove(old);
+      old.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+      });
+      equipmentGroupRef.current = null;
+    }
+    if (!showEquipment) return;
+
+    const group = new THREE.Group();
+    const { length_m: L, width_m: W } = geometry;
+    const { padX, padZ, lift, padH } = computePad(geometry, terrain, anchor, sampleTerrain);
+
+    // Level the shelter on a cut-and-fill pad so the shell never floats above
+    // or sinks into a slope. The group is lifted onto it by the positioning
+    // effect, which is the single owner of scene placement.
+    if (terrain && anchor) {
+      const pad = new THREE.Mesh(
+        new THREE.BoxGeometry(L + 2.8, padH, W + 2.8),
+        new THREE.MeshStandardMaterial({ color: '#334155', roughness: 0.95 })
+      );
+      pad.position.set(0, lift - padH / 2, 0);
+      pad.receiveShadow = true;
+      pad.userData.part = 'shelter_shell' as ShelterPartId;
+      group.add(pad);
+    }
+
+    const addPart = (
+      part: ShelterPartId,
+      mesh: THREE.Mesh,
+      x: number,
+      z: number,
+      lift: number
+    ) => {
+      const y = (terrain && anchor ? sampleTerrain(x, z) : 0) + lift;
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.userData.part = part;
+      group.add(mesh);
+    };
+
+    const steel = (c: string) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.55, metalness: 0.7 });
+    const body = (c: string) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, metalness: 0.4 });
+
+    // Generator set (west flank)
+    addPart('generator', new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.1, 1.0), body('#f59e0b')),
+      -padX - 1.1, 0, 0.55);
+    const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.1, 10), steel('#475569'));
+    addPart('generator', exhaust, -padX - 1.1, 0.35, 1.6);
+
+    // Fuel tank (bulk storage, north-east)
+    addPart('fuel_tank', new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 2.0, 20), body('#e2e8f0')),
+      padX + 1.0, -1.0, 0.75);
+    addPart('fuel_tank', new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.06, 8, 20), steel('#64748b')),
+      padX + 1.0, -1.0, 0.0);
+
+    // Battery bank (south-east enclosure)
+    addPart('battery', new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.9, 0.8), body('#22c55e')),
+      padX + 0.9, 1.2, 0.45);
+
+    // Solar array (south, facing the solar facade)
+    for (let i = 0; i < 3; i++) {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.06, 0.9), body('#1e3a8a'));
+      panel.rotation.x = -0.5;
+      addPart('solar_array', panel, (i - 1) * 1.75, padZ + 0.9, 0.85);
+    }
+
+    // Ventilation cowl (roof-adjacent, north)
+    const vent = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.5, 14), steel('#94a3b8'));
+    addPart('ventilation', vent, L / 2 - 0.6, -padZ - 0.7, 0.25);
+
+    // Communications mast (north-east corner)
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3.2, 8), steel('#cbd5e1'));
+    addPart('comms', mast, -padX - 0.6, -padZ - 0.6, 1.6);
+    const dish = new THREE.Mesh(new THREE.SphereGeometry(0.32, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), body('#38bdf8'));
+    addPart('comms', dish, -padX - 0.6, -padZ - 0.6, 3.1);
+
+    scene.add(group);
+    equipmentGroupRef.current = group;
+  }, [showEquipment, terrain, anchor, geometry, sampleTerrain, computePad]);
+
+  /**
+   * Single owner of scene placement.
+   *
+   * Every geo-located object (terrain patch, shell, bunks, berms, equipment)
+   * is moved to the shelter's projected scene position plus its ground lift.
+   * Because the position comes from `geoToScene` against the live map origin,
+   * the shelter stays locked to its real coordinates while the map is panned
+   * and zoomed.
+   */
+  useEffect(() => {
+    const sx = anchorScenePoint?.x ?? 0;
+    const sz = anchorScenePoint?.z ?? 0;
+    // Level the footprint against the real DEM so the shell never floats or
+    // sinks. `lift` is the height of the highest footprint corner above the
+    // anchor datum.
+    const { lift } = computePad(geometry, terrain, anchor, sampleTerrain);
+
+    const targets: Array<THREE.Object3D | null> = [
+      terrainMeshRef.current,
+      shelterGroupRef.current,
+      bunksGroupRef.current,
+      earthBermGroupRef.current,
+      equipmentGroupRef.current,
+    ];
+    targets.forEach((obj) => {
+      if (!obj) return;
+      // The terrain patch carries no lift: its vertex heights are already
+      // relative to the anchor.
+      const isTerrain = obj === terrainMeshRef.current;
+      obj.position.set(sx, isTerrain ? 0 : lift, sz);
+    });
+  }, [anchorScenePoint, geometry, terrain, anchor, sampleTerrain, computePad, showEquipment]);
+
+  // -------------------------------------------------------------------------
+  // Raycast picking for hover highlighting and subsystem clicks
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    const camera = cameraRef.current;
+    const scene = sceneRef.current;
+    if (!renderer || !camera || !scene) return;
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const el = renderer.domElement;
+
+    const pick = (ev: PointerEvent): ShelterPartId | null => {
+      const rect = el.getBoundingClientRect();
+      pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const targets: THREE.Object3D[] = [];
+      [equipmentGroupRef.current, shelterGroupRef.current, earthBermGroupRef.current]
+        .forEach((g) => g && targets.push(g));
+      const hits = raycaster.intersectObjects(targets, true);
+      for (const hit of hits) {
+        const part = hit.object.userData?.part as ShelterPartId | undefined;
+        if (part) return part;
+      }
+      return null;
+    };
+
+    const applyHighlight = (part: ShelterPartId | null) => {
+      hoveredPartRef.current = part;
+      el.style.cursor = part ? 'pointer' : 'default';
+      const active = part ?? highlightPart ?? null;
+      const roots = [equipmentGroupRef.current, shelterGroupRef.current];
+      roots.forEach((root) => {
+        if (!root) return;
+        root.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.material) return;
+          const mat = m.material as THREE.MeshStandardMaterial;
+          if (mat.emissive) {
+            const isActive = Boolean(m.userData?.part) && m.userData.part === active;
+            mat.emissive.set(isActive ? '#0e7490' : '#000000');
+            mat.emissiveIntensity = isActive ? 0.9 : 0;
+          }
+        });
+      });
+    };
+
+    const onMove = (ev: PointerEvent) => applyHighlight(pick(ev));
+    const onClick = (ev: PointerEvent) => {
+      const part = pick(ev);
+      if (part === 'shelter_shell') {
+        onShelterSelect?.();
+        handlePartSelect('shelter_shell');
+      } else if (part) {
+        handlePartSelect(part);
+      }
+    };
+    const onLeave = () => applyHighlight(null);
+
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('click', onClick);
+    el.addEventListener('pointerleave', onLeave);
+    return () => {
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('click', onClick);
+      el.removeEventListener('pointerleave', onLeave);
+    };
+  }, [handlePartSelect, onShelterSelect, highlightPart, showEquipment, terrain, anchor]);
 
   // Camera Presets
   const setCameraView = (view: 'ISO' | 'SOUTH' | 'TOP' | 'FRONT') => {
@@ -605,6 +1087,32 @@ export const Shelter3DViewer: React.FC<Shelter3DViewerProps> = ({
       {/* Three.js Container */}
       <div className="relative rounded-lg overflow-hidden border border-command-700/80 bg-command-950 h-72 md:h-80 w-full flex-grow">
         <div ref={mountRef} className="three-canvas-container" />
+
+        {/* Georeference HUD (Bottom Left) - real WGS84 + DEM provenance */}
+        {anchor && (
+          <div className="absolute bottom-2.5 left-2.5 bg-command-950/85 backdrop-blur-md border border-command-700/80 rounded px-2.5 py-1.5 font-mono text-[10px] text-slate-300 pointer-events-none space-y-0.5">
+            <div className="flex items-center gap-1.5 text-tactical-cyan font-bold">
+              <MapPin size={10} />
+              WGS84 ANCHOR
+            </div>
+            <div>
+              {anchor.latitude.toFixed(5)}&deg;N, {anchor.longitude.toFixed(5)}&deg;E
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Mountain size={10} />
+              {anchor.elevation.toFixed(0)} m {terrain ? (terrain.is_simulated ? 'ESTIMATED' : 'DEM') : 'ELEV'}
+              {terrain ? ` · ${terrain.min_elevation_m.toFixed(0)}–${terrain.max_elevation_m.toFixed(0)} m` : ''}
+            </div>
+            <div>HDG {anchor.heading.toFixed(0)}&deg; · 1 unit = 1 m</div>
+          </div>
+        )}
+
+        {/* Selected subsystem indicator */}
+        {activePart && (
+          <div className="absolute bottom-2.5 right-2.5 bg-command-950/85 backdrop-blur-md border border-tactical-cyan/50 rounded px-2.5 py-1.5 font-mono text-[10px] text-tactical-cyan pointer-events-none">
+            SELECTED: {SHELTER_PART_LABELS[activePart].toUpperCase()}
+          </div>
+        )}
 
         {/* Camera View Controls Overlay (Top Right) */}
         <div className="absolute top-2.5 right-2.5 flex items-center gap-1 bg-command-950/85 backdrop-blur-md border border-command-700/80 rounded p-1 font-mono text-[10px]">

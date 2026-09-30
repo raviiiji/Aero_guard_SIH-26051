@@ -34,6 +34,7 @@ import {
 
 export type NavSection =
   | 'overview'
+  | 'shelter_twin'
   | 'data_import'
   | 'shelter_blueprint'
   | 'mission_config'
@@ -80,6 +81,12 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
       badge: 'C2 VIEW',
     },
     {
+      id: 'shelter_twin' as NavSection,
+      label: 'Shelter Digital Twin',
+      icon: Radio,
+      badge: 'LIVE GEO',
+    },
+    {
       id: 'data_import' as NavSection,
       label: 'Data Feeder',
       icon: Upload,
@@ -123,7 +130,7 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
     },
     {
       id: 'dossier' as NavSection,
-      label: 'DRDO Dossier',
+      label: 'Technical Dossier',
       icon: FileText,
       badge: 'REPORT',
     },
@@ -151,7 +158,7 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
                 AERO-SHIELD
               </h1>
               <p className="text-[10px] font-bold text-[#8aebff]/70 tracking-widest uppercase">
-                DRDO ID: 26051
+                SIH 26051 DEMONSTRATOR
               </p>
             </div>
           </div>
@@ -265,7 +272,7 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
                     </span>
                   </div>
                   <p className="text-xs text-[#bbc9cd]">
-                    DRDO Problem ID: 26051 | Sector: {latitude.toFixed(2)}°N at {elevation.toLocaleString()}m ASL
+                    SIH Problem ID: 26051 | Sector: {latitude.toFixed(2)}°N at {elevation.toLocaleString()}m ASL
                   </p>
                 </div>
               </div>
@@ -457,7 +464,7 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
                   }}
                   className="px-3 py-1.5 bg-[#8aebff] hover:bg-[#a2eeff] text-[#060e20] text-xs font-bold rounded uppercase shadow-[0_0_12px_rgba(138,235,255,0.4)] transition-all"
                 >
-                  📋 Official DRDO Dossier
+                  📋 Technical Dossier
                 </button>
               </div>
             </div>

@@ -201,3 +201,16 @@ export async function importCsvMaterials(file: File): Promise<MaterialCsvImportR
   }
   return res.json();
 }
+
+// Re-export modular service functions
+export * from './weatherApi';
+export * from './locationApi';
+export * from './elevationApi';
+export * from './satelliteApi';
+export * from './aircraftApi';
+export * from './aiApi';
+export * from './engineApi';
+export * from './cadApi';
+export * from './optimizerApi';
+export * from './simulationApi';
+export * from './missionApi';

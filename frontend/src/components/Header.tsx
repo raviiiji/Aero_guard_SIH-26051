@@ -140,7 +140,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onOpenReport}
             className="tactical-btn-primary text-xs py-1.5 px-3"
-            title="Download DRDO Assessment Dossier"
+            title="Download Technical Assessment Dossier"
           >
             <FileText className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Export Dossier</span>

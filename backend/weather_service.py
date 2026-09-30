@@ -240,8 +240,11 @@ def fetch_weather_and_cluster(
 
 def generate_site_design_template(lat: float, elevation_m: float = 3500.0, troops: int = 8) -> Dict[str, Any]:
     """
-    Dynamically generates the exact certified DRDO architectural and material specification
+    Dynamically generates an architectural and material specification
     tailored to the site's elevation and climate.
+
+    This is a rules-engine recommendation for the SIH 26051 demonstrator, not a
+    certified or endorsed engineering specification.
     """
     min_floor_area = max(18.0, troops * 3.0)
     l_m = round((min_floor_area * 1.5) ** 0.5, 1)

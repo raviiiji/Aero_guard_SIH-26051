@@ -2,7 +2,12 @@
   "name": "aero-guard-sih-26051",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "build": "cd frontend && npm install && npm run build"
+    "dev": "node scripts/dev.js",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "node scripts/start-backend.js",
+    "build": "npm --prefix frontend run build",
+    "test:backend": "cd backend && python3 test_backend.py"
   }
 }

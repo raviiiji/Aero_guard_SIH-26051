@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { NavigationSidebar, NavSection } from './components/NavigationSidebar';
 import { TopAppBar } from './components/TopAppBar';
 import { StrategicOverviewSection } from './sections/StrategicOverviewSection';
+import { DigitalTwinSection } from './sections/DigitalTwinSection';
 import { DataImportSection } from './sections/DataImportSection';
 import { RecommendedBlueprintSection } from './sections/RecommendedBlueprintSection';
 import { MissionConfigSection } from './sections/MissionConfigSection';
@@ -29,9 +30,21 @@ import {
   runSimulation,
 } from './services/api';
 
+import { listShelters } from './services/shelterApi';
+
+import { AIAssistantDrawer } from './components/AIAssistantDrawer';
+import { SystemStatusModal } from './components/SystemStatusModal';
+import { UnifiedMissionModal } from './components/UnifiedMissionModal';
+
 export function App() {
   // 1. Navigation State
   const [activeSection, setActiveSection] = useState<NavSection>('overview');
+
+  // Modals & Drawers State
+  const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+  const [isMissionModalOpen, setIsMissionModalOpen] = useState(false);
+  const [locationName, setLocationName] = useState<string>('Leh Military Station');
 
   // 2. Geographic & Station State
   const [stations, setStations] = useState<DefenseStation[]>([]);
@@ -94,6 +107,9 @@ export function App() {
   });
 
   // 7. Simulation & Data State
+  // Active digital-twin shelter id. Kept at app level so the twin survives
+  // section switches and map selections elsewhere in the application.
+  const [selectedShelterId, setSelectedShelterId] = useState<string | null>(null);
   const [weatherData, setWeatherData] = useState<WeatherResponse | null>(null);
   const [simResult, setSimResult] = useState<SimulationResult | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -111,17 +127,58 @@ export function App() {
       })
       .catch((err) => console.error('Failed to load materials:', err));
 
-    fetchDefenseStations()
+    // Resolve the initial geographic anchor.
+    //
+    // The deployed twin is authoritative: the 3D map, the LIVE MAP and the
+    // telemetry header all anchor off this state, so on reload they must adopt
+    // wherever the shelter was actually relocated to. Previously this was seeded
+    // from the first defence station, which meant a relocated shelter snapped
+    // back to that station's coordinates on every page load while the twin
+    // itself still reported the real position.
+    //
+    // Both requests are started together and the station result is only used as
+    // a fallback, so the two cannot race and overwrite each other.
+    let stationFallback: { lat: number; lng: number; elevation_m: number } | null = null;
+
+    const stationsPromise = fetchDefenseStations()
       .then((stList) => {
         setStations(stList);
         if (stList.length > 0) {
           setCurrentStation(stList[0]);
-          setLatitude(stList[0].lat);
-          setLongitude(stList[0].lng);
-          setElevation(stList[0].elevation_m);
+          stationFallback = {
+            lat: stList[0].lat,
+            lng: stList[0].lng,
+            elevation_m: stList[0].elevation_m,
+          };
         }
       })
       .catch((err) => console.error('Failed to load stations:', err));
+
+    const twinPromise = listShelters()
+      .then(({ shelters }) => {
+        const twin = shelters?.[0];
+        if (twin?.location) {
+          setSelectedShelterId(twin.id);
+          setLatitude(twin.location.latitude);
+          setLongitude(twin.location.longitude);
+          setElevation(twin.location.elevation_m);
+          return true;
+        }
+        return false;
+      })
+      .catch((err) => {
+        console.warn('No deployed shelter to anchor to:', err);
+        return false;
+      });
+
+    Promise.all([stationsPromise, twinPromise]).then(([, twinApplied]) => {
+      // Only fall back to the station default when no twin claimed the anchor.
+      if (!twinApplied && stationFallback) {
+        setLatitude(stationFallback.lat);
+        setLongitude(stationFallback.lng);
+        setElevation(stationFallback.elevation_m);
+      }
+    });
   }, []);
 
   // Fetch Weather on Lat/Lng Change
@@ -185,12 +242,28 @@ export function App() {
     setLatitude(st.lat);
     setLongitude(st.lng);
     setElevation(st.elevation_m);
+    setLocationName(st.name);
   };
 
-  const handleLocationSelect = (lat: number, lng: number) => {
+  const handleSelectCustomLocation = (lat: number, lng: number, name?: string, elev?: number) => {
     setCurrentStation(null);
     setLatitude(lat);
     setLongitude(lng);
+    if (elev !== undefined && elev > 0) {
+      setElevation(elev);
+    }
+    if (name) {
+      setLocationName(name);
+    } else {
+      setLocationName(`Coord (${lat.toFixed(2)}°, ${lng.toFixed(2)}°)`);
+    }
+  };
+
+  const handleLocationSelect = (lat: number, lng: number, name?: string) => {
+    setCurrentStation(null);
+    setLatitude(lat);
+    setLongitude(lng);
+    setLocationName(name || `Custom Target (${lat.toFixed(3)}°, ${lng.toFixed(3)}°)`);
   };
 
   const handleApplyExactDesign = (
@@ -257,7 +330,11 @@ export function App() {
           elevation={elevation}
           weatherData={weatherData}
           onSelectStation={handleSelectStation}
+          onSelectCustomLocation={handleSelectCustomLocation}
           onEmergencyBoost={handleEmergencyBoost}
+          onOpenStatusModal={() => setIsStatusModalOpen(true)}
+          onToggleAIAssistant={() => setIsAIAssistantOpen((prev) => !prev)}
+          onOpenMissionModal={() => setIsMissionModalOpen(true)}
         />
 
         {/* Section Viewport Container */}
@@ -271,6 +348,24 @@ export function App() {
               onUpdateGeometry={(updates) => setGeometry((prev) => ({ ...prev, ...updates }))}
               onUpdateParams={(updates) => setParams((prev) => ({ ...prev, ...updates }))}
               onNavigateTo={setActiveSection}
+            />
+          )}
+
+          {activeSection === 'shelter_twin' && (
+            <DigitalTwinSection
+              geometry={geometry}
+              simResult={simResult}
+              troops={params.troops}
+              latitude={latitude}
+              longitude={longitude}
+              elevation={elevation}
+              locationName={locationName}
+              currentStation={currentStation}
+              stations={stations}
+              weatherData={weatherData}
+              onLocationSelect={handleLocationSelect}
+              selectedShelterId={selectedShelterId}
+              onShelterChange={setSelectedShelterId}
             />
           )}
 
@@ -373,6 +468,39 @@ export function App() {
           )}
         </main>
       </div>
+
+      {/* Tactical AI Co-Pilot Assistant Drawer */}
+      <AIAssistantDrawer
+        isOpen={isAIAssistantOpen}
+        onClose={() => setIsAIAssistantOpen(false)}
+        contextData={{
+          location: { name: locationName, latitude, longitude, elevation },
+          weather: weatherData?.metrics_90day || {},
+          shelter: geometry,
+          simulation: simResult?.summary || {},
+          params: params,
+          envelope: { roof: roofEnvelope, wall: wallEnvelope, floor: floorEnvelope },
+        }}
+      />
+
+      {/* System Subsystems Health & API Status Modal */}
+      <SystemStatusModal
+        isOpen={isStatusModalOpen}
+        onClose={() => setIsStatusModalOpen(false)}
+      />
+
+      {/* Unified Multi-Domain Mission Assessment Report Modal */}
+      <UnifiedMissionModal
+        isOpen={isMissionModalOpen}
+        onClose={() => setIsMissionModalOpen(false)}
+        latitude={latitude}
+        longitude={longitude}
+        locationName={locationName}
+        troops={params.troops}
+        targetTempC={params.target_temp_c}
+        missionDurationDays={params.mission_duration_days}
+        archetype={geometry.archetype}
+      />
     </div>
   );
 }

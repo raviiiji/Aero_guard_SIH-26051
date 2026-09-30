@@ -81,10 +81,10 @@ export const DossierSection: React.FC<DossierSectionProps> = ({
           </div>
           <div>
             <h2 className="text-sm font-bold uppercase text-[#8aebff]">
-              Official DRDO Technical Assessment Dossier & Logistics Dossier
+              Technical Assessment &amp; Shelter Digital Twin Dossier
             </h2>
             <p className="text-xs text-[#bbc9cd]">
-              Problem Statement ID: 26051 | Area-Specific High-Altitude Thermal Comfort System
+              AERO-SHIELD — SIH 26051 Project Demonstrator | Area-Specific High-Altitude Thermal Comfort System
             </p>
           </div>
         </div>
@@ -102,7 +102,7 @@ export const DossierSection: React.FC<DossierSectionProps> = ({
           <button
             onClick={handlePrint}
             className="px-4 py-2 bg-[#8aebff] hover:bg-[#a2eeff] text-[#060e20] text-xs font-bold rounded flex items-center gap-1.5 uppercase shadow-[0_0_15px_rgba(138,235,255,0.4)] transition-all"
-            title="Print Official Dossier"
+            title="Print Technical Dossier"
           >
             <Printer className="w-3.5 h-3.5" />
             <span>Print Dossier</span>
@@ -119,13 +119,13 @@ export const DossierSection: React.FC<DossierSectionProps> = ({
         <div className="border-b-2 border-[#8aebff]/30 pb-4 flex items-start justify-between">
           <div>
             <div className="text-base font-black text-[#fb923c] uppercase tracking-wider font-sans">
-              DEFENCE RESEARCH & DEVELOPMENT ORGANISATION (DRDO)
+              AERO-SHIELD — SIH 26051 PROJECT DEMONSTRATOR
             </div>
             <div className="text-xs font-bold text-[#dae2fd] mt-0.5">
-              DIRECTORATE OF HIGH-ALTITUDE COMBAT SURVIVABILITY & LOGISTICS OPTIMIZATION
+              TECHNICAL ASSESSMENT &amp; SHELTER DIGITAL TWIN
             </div>
             <div className="text-[10px] text-[#bbc9cd] mt-1">
-              Assessment Dossier: Software Based Model Development for Design of Area Specific Shelter for Thermal Comfort Maintenance (ID: 26051)
+              Software-based model development for design of area-specific shelter for thermal comfort maintenance (Problem ID: 26051). Independent SIH project demonstration; not an official DRDO publication.
             </div>
           </div>
 
